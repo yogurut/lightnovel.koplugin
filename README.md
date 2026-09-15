@@ -146,32 +146,36 @@ KOReader 只在启动时扫描 `plugins/`。拷贝插件后必须**完全退出�
 
 #### 代码层面的原因（给自己改代码时看）
 
-1. **插件必须是 `WidgetContainer` 的子类**。
+1. **不要调用 `WidgetContainer.init(self)`**。
+   `WidgetContainer` 是**空基类，没有 `init` 方法**，调用会报
+   `attempt to call field 'init' (a nil value)`，真机上表现为
+   `Failed to initialize lightnovel plugin`。直接写自己的初始化逻辑即可。
+
+2. **插件必须是 `WidgetContainer` 的子类**。
    如果 `main.lua` 里写的是 `local P = {}` 而不是
-   `local P = WidgetContainer:extend{...}`，KOReader 不会接管它的菜单，
-   但插件管理页仍会读出 `_meta.lua` 里的名字——于是出现「列表里有、菜单里没有」。
+   `local P = WidgetContainer:extend{...}`，KOReader 不会接管它的菜单。
 
-2. **所有 `require` 都要容错**。
-   `main.lua` 顶层只要有一个 `require` 抛错，整个插件就被跳过，
-   而 `_meta.lua` 是单独读的，于是名字还在列表里。用 `pcall` / `safe_require` 包裹。
+3. **所有 `require` 都要容错**。
+   `main.lua` 顶层只要有一个 `require` 抛错，整个插件就被跳过。
+   用 `pcall` / `safe_require` 包裹。
 
-3. **`init()` 里要手动注册菜单**。
+4. **`init()` 里要手动注册菜单**。
    KOReader 只会为文件管理器自动注册；在阅读器界面里需要：
 
    ```lua
    function P:init()
-       WidgetContainer.init(self)
+       -- 注意：这里不要写 WidgetContainer.init(self)
        if self.ui and self.ui.menu then
            self.ui.menu:registerToMainMenu(self)
        end
    end
    ```
 
-4. **`is_doc_only` 要为 `false`**，否则只在打开书籍后才出现。
+5. **`is_doc_only` 要为 `false`**，否则只在打开书籍后才出现。
 
-5. **`_meta.lua` 的 `name` 要和主类的 `name` 一致**。
+6. **`_meta.lua` 的 `name` 要和主类的 `name` 一致**。
 
-6. **`sorting_hint` 决定菜单位置**：`"tools"` → 工具菜单，
+7. **`sorting_hint` 决定菜单位置**：`"tools"` → 工具菜单，
    `"search"` → 搜索菜单，`"setting"` → 设置菜单。
 
 不用上设备也能测这段逻辑：
@@ -181,7 +185,8 @@ lua5.1 test/test_menu.lua
 ```
 
 它会用 `test/menu-stubs/` 里的 KOReader 模块桩，完整模拟
-「加载 → 实例化 → init → 注册菜单 → 展开子菜单」的链路。
+「加载 → 实例化 → init → 注册菜单 → 展开子菜单」的链路，
+并且能复现真机上的初始化报错。
 
 ### 第 1 步：登录
 

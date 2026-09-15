@@ -89,7 +89,7 @@ if not Log then
 end
 
 if not INFO then
-    INFO = { fullname = "轻书架", version = "0.1.0", description = "", servers = {} }
+    INFO = { fullname = "轻书架", version = "0.1.1", description = "", servers = {} }
 end
 
 if not State then
