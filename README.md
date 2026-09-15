@@ -1,15 +1,15 @@
 # lightnovel.koplugin
 
-> ⚠️ **本分支（master）为开发中状态，功能不完整、可能随时变动。**
+> ✅ **当前为 `dev` 开发分支**（仓库默认分支）。
 >
-> - 日常开发在 [`dev`](https://github.com/yogurut/lightnovel.koplugin/tree/dev) 分支进行
-> - 正式发布（Release / 打 tag）在 `dev` 分支上进行
-> - 需要可用版本请到 [Releases](https://github.com/yogurut/lightnovel.koplugin/releases) 下载
+> - 日常开发与**正式发版（打 tag）**都在本分支进行
+> - 稳定版请到 [Releases](https://github.com/yogurut/lightnovel.koplugin/releases) 下载
+> - [`master`](https://github.com/yogurut/lightnovel.koplugin/tree/master) 仅作镜像/备份，标注为开发中
 
 在 [KOReader](https://github.com/koreader/koreader) 中阅读[轻书架](https://www.lightnovel.life)（lightnovel.app / lightnovel.life）的小说。
 
 ![状态](https://img.shields.io/badge/status-开发中-orange)
-![分支](https://img.shields.io/badge/开发分支-dev-blue)
+![分支](https://img.shields.io/badge/branch-dev-blue)
 
 ## 特性
 
