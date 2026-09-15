@@ -1,20 +1,27 @@
 # lightnovel.koplugin
 
-轻书架（[lightnovel.life](https://www.lightnovel.life)）的 [KOReader](https://github.com/koreader/koreader) 插件。
+轻书架的 [KOReader](https://github.com/koreader/koreader) 插件。
 
 > 🚧 **开发中**
 >
 > 本仓库仍在开发中，功能尚不完整，代码与接口都可能随时变动。
+>
+> 源代码与开发记录在 `dev` 分支。
 
 ## 这是什么
 
 一个让你在 KOReader（墨水屏阅读器）上直接阅读轻书架小说的插件。
 
+已实现：
+
+- 邮箱密码登录，自动检测可用线路
+- 章节阅读、阅读进度同步
+- **章节正文字体解密还原**（见下）
+- 字体下载与缓存
+
 计划支持：
 
-- 邮箱密码登录，同步账号书架
 - 搜索书籍、按书架浏览
-- 章节阅读、阅读进度同步
 - 离线缓存
 
 其中一个已经攻克的技术点是**章节正文的字体解密还原**：轻书架对正文做了字体映射混淆，
