@@ -13,22 +13,89 @@
   方便在真机上快速判断字体方案是否生效。
 ]]
 
-local _ = require("gettext")
-local WidgetContainer = require("ui/widget/container/widgetcontainer")
-local UIManager = require("ui/uimanager")
-local InfoMessage = require("ui/widget/infomessage")
-local InputDialog = require("ui/widget/inputdialog")
-local MultiInputDialog = require("ui/widget/multiinputdialog")
-local Trapper = require("ui/trapper")
-local Dispatcher = require("dispatcher")
+-- 关键：所有 require 都必须能被容错。
+-- KOReader 加载插件时，如果 main.lua 顶层抛错，插件会直接被跳过，
+-- 但 _meta.lua 是单独读的，于是出现「插件列表里有名字、菜单里却找不到」。
+-- 这里全部用 safe_require，任何一个可选模块缺失都不会拖垮整个插件。
+local LOG_MODULE = "[lightnovel]"
 
-local Log = require("lightnovel.logger")
-local State = require("lightnovel.state")
-local Auth = require("lightnovel.auth")
-local api = require("lightnovel.api")
-local Content = require("lightnovel.content")
-local Font = require("lightnovel.font")
-local INFO = require("lightnovel.info")
+local function safe_require(module_name, required)
+    local ok, result = pcall(require, module_name)
+    if not ok then
+        if required then
+            print(LOG_MODULE, "fatal: failed to load required module:",
+                module_name, "-", tostring(result))
+            return nil, false
+        end
+        print(LOG_MODULE, "warning: failed to load optional module:",
+            module_name, "-", tostring(result))
+        return nil, true
+    end
+    return result, true
+end
+
+-- 唯一必需的依赖
+local WidgetContainer, ok = safe_require("ui/widget/container/widgetcontainer", true)
+if not ok then return end
+
+local _ = (function()
+    local okg, g = pcall(require, "gettext")
+    return okg and g or function(t) return t end
+end)()
+
+local UIManager      = safe_require("ui/uimanager")
+local InfoMessage    = safe_require("ui/widget/infomessage")
+local InputDialog    = safe_require("ui/widget/inputdialog")
+local MultiInputDialog = safe_require("ui/widget/multiinputdialog")
+local Trapper        = safe_require("ui/trapper")
+
+local Log     = safe_require("lightnovel.logger")
+local State   = safe_require("lightnovel.state")
+local Auth    = safe_require("lightnovel.auth")
+local api     = safe_require("lightnovel.api")
+local Content = safe_require("lightnovel.content")
+local Font    = safe_require("lightnovel.font")
+local INFO    = safe_require("lightnovel.info")
+
+-- 写一个自检标记，用来判断「KOReader 到底有没有加载这个插件」。
+-- 如果 koreader/settings/lightnovel/loaded.txt 不存在，
+-- 说明 main.lua 在扫描阶段就挂了（看 crash.log），或者插件目录名不对。
+local function write_load_marker(stage)
+    pcall(function()
+        local DataStorage = require("datastorage")
+        local dir = DataStorage:getSettingsDir() .. "/lightnovel"
+        os.execute("mkdir -p '" .. dir .. "'")
+        local f = io.open(dir .. "/loaded.txt", "w")
+        if f then
+            f:write("stage=" .. stage .. "\n")
+            f:write("version=" .. tostring(INFO and INFO.version) .. "\n")
+            f:write("module_loaded\n")
+            f:close()
+        end
+    end)
+end
+
+write_load_marker("module")
+
+-- 兜底：万一 logger 没加载成功，也要能打日志，不能让插件崩
+if not Log then
+    Log = {
+        info = function(...) print(LOG_MODULE, "info", ...) end,
+        warn = function(...) print(LOG_MODULE, "warn", ...) end,
+        error = function(...) print(LOG_MODULE, "error", ...) end,
+        debug = function() end,
+        get_path = function() return "(logger 模块未加载)" end,
+    }
+end
+
+if not INFO then
+    INFO = { fullname = "轻书架", version = "0.1.0", description = "", servers = {} }
+end
+
+if not State then
+    -- 状态模块加载失败时，用内存兜底，保证菜单还能打开（虽然登录不可用）
+    Log.error("lightnovel.state 加载失败，插件功能将受限")
+end
 
 -- KOReader 的插件必须是 WidgetContainer 的子类，否则 pluginloader
 -- 不会把它接入菜单系统（会出现「插件列表里有名字，但菜单里找不到」）。
@@ -281,16 +348,24 @@ end
 -- 菜单项用函数返回（KOReader 推荐），每次打开菜单重新求值，
 -- 这样「已登录：xxx」这类动态文案才会实时更新。
 function LightNovel:getMenuItems()
+    -- 菜单必须永远能渲染出来，哪怕底层模块加载失败。
+    -- 状态模块缺失时用安全代理，让它返回默认值而不是报错。
+    local S = State or setmetatable({}, {
+        __index = function()
+            return function() return false end
+        end,
+    })
+
     return {
             {
                 text_func = function()
-                    if State:is_logged_in() then
-                        return _("已登录：") .. (State:get_email() or "")
+                    if S:is_logged_in() then
+                        return _("已登录：") .. (S:get_email() or "")
                     end
                     return _("登录")
                 end,
                 callback = function()
-                    if State:is_logged_in() then
+                    if S:is_logged_in() then
                         local ConfirmBox = require("ui/widget/confirmbox")
                         UIManager:show(ConfirmBox:new{
                             text = _("退出登录？"),
@@ -306,23 +381,23 @@ function LightNovel:getMenuItems()
             },
             {
                 text = _("打开书籍（输入 ID）"),
-                enabled_func = function() return State:is_logged_in() end,
+                enabled_func = function() return S:is_logged_in() end,
                 callback = ask_open_book,
             },
             {
                 text = _("测试字体解密"),
                 help_text = _("拉取第 1 章并检查字体是否加载成功"),
-                enabled_func = function() return State:is_logged_in() end,
+                enabled_func = function() return S:is_logged_in() end,
                 callback = function() test_font() end,
             },
             {
                 text = _("默认测试书籍 ID"),
-                help_text = tostring(State:get_last_book() or "—"),
+                help_text = tostring(S:get_last_book() or "—"),
                 callback = function()
                     local dlg
                     dlg = InputDialog:new{
                         title = _("默认测试书籍 ID"),
-                        input = tostring(State:get_last_book() or ""),
+                        input = tostring(S:get_last_book() or ""),
                         buttons = {{
                             { text = _("取消"), callback = function() UIManager:close(dlg) end },
                             {
@@ -330,7 +405,7 @@ function LightNovel:getMenuItems()
                                 callback = function()
                                     local id = tonumber(dlg:getInputText())
                                     UIManager:close(dlg)
-                                    if id then State:set_last_book(id) end
+                                    if id then S:set_last_book(id) end
                                 end,
                             },
                         }},
@@ -364,20 +439,30 @@ end
 function LightNovel:init()
     WidgetContainer.init(self)
 
-    local ok, err = pcall(function()
-        State:init()
-    end)
-    if not ok then
-        Log.error("State:init 失败: %s", tostring(err))
+    if State and State.init then
+        local ok, err = pcall(function()
+            State:init()
+        end)
+        if not ok then
+            Log.error("State:init 失败: %s", tostring(err))
+        end
     end
 
-    if self.ui and self.ui.menu then
+    -- 阅读器界面下必须自己注册菜单（文件管理器是自动的）。
+    -- 这一步绝对不能失败，否则用户看不到入口。
+    if self.ui and self.ui.menu and self.ui.menu.registerToMainMenu then
         local rok, rerr = pcall(function()
             self.ui.menu:registerToMainMenu(self)
         end)
         if not rok then
             Log.error("菜单注册失败: %s", tostring(rerr))
+            write_load_marker("menu_failed: " .. tostring(rerr))
+        else
+            write_load_marker("menu_ok")
         end
+    else
+        Log.warn("ui.menu 不可用，菜单将由 KOReader 自动注册")
+        write_load_marker("no_ui_menu")
     end
 
     Log.info("lightnovel 插件已加载 v%s", INFO.version)

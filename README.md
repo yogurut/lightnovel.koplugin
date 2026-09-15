@@ -90,16 +90,72 @@
 2. 打开菜单 → **工具** → 应该能看到 **轻书架**。
 3. 打开 `koreader/crash.log`，不应有 `lightnovel` 相关报错。
 
-#### 排查：插件列表里有「轻书架」，但菜单里找不到
+#### 排查：菜单里找不到「轻书架」
 
-这是最容易踩的坑。原因和排查顺序：
+按下面顺序检查，每一步都能缩小范围。
+
+**第一步：确认插件目录结构对不对**
+
+```
+koreader/plugins/lightnovel.koplugin/     ← 必须是这个目录名（含 .koplugin）
+├── _meta.lua                             ← 必须在这一层
+├── main.lua                              ← 必须在这一层
+└── lightnovel/                           ← 子模块目录
+    ├── api.lua
+    └── ...
+```
+
+常见错误：解压后变成双层目录
+`plugins/lightnovel.koplugin/lightnovel.koplugin/main.lua` ❌
+把里面那层的内容移到外层即可。
+
+**第二步：看自检标记**
+
+插件加载后会写一个标记文件：
+
+```
+koreader/settings/lightnovel/loaded.txt
+```
+
+| 文件内容 | 含义 |
+|---|---|
+| 文件不存在 | `main.lua` 没被加载：目录名/结构不对，或加载时崩溃 |
+| `stage=module` | 模块加载了，但 `init()` 没跑 |
+| `stage=menu_ok` | ✅ 菜单已注册，应该能看到 |
+| `stage=menu_failed: ...` | 注册报错，后面跟着原因 |
+| `stage=no_ui_menu` | 当时没有 `ui.menu`（正常会自动注册） |
+
+**第三步：看 crash.log**
+
+```bash
+# 设备上或电脑上
+cat koreader/crash.log | grep -i lightnovel
+```
+
+**第四步：确认在哪找菜单**
+
+入口在 **工具** 菜单（`sorting_hint = "tools"`），不是在「搜索」或「设置」里。
+
+- 文件管理器：菜单 → **工具**
+- 打开任意一本书后：菜单 → **工具**
+
+**第五步：需要重启，不是刷新**
+
+KOReader 只在启动时扫描 `plugins/`。拷贝插件后必须**完全退出再打开**，
+不能只返回书架。
+
+#### 代码层面的原因（给自己改代码时看）
 
 1. **插件必须是 `WidgetContainer` 的子类**。
    如果 `main.lua` 里写的是 `local P = {}` 而不是
    `local P = WidgetContainer:extend{...}`，KOReader 不会接管它的菜单，
    但插件管理页仍会读出 `_meta.lua` 里的名字——于是出现「列表里有、菜单里没有」。
 
-2. **`init()` 里要手动注册菜单**。
+2. **所有 `require` 都要容错**。
+   `main.lua` 顶层只要有一个 `require` 抛错，整个插件就被跳过，
+   而 `_meta.lua` 是单独读的，于是名字还在列表里。用 `pcall` / `safe_require` 包裹。
+
+3. **`init()` 里要手动注册菜单**。
    KOReader 只会为文件管理器自动注册；在阅读器界面里需要：
 
    ```lua
@@ -111,12 +167,11 @@
    end
    ```
 
-3. **`is_doc_only` 要为 `false`**，否则只在打开书籍后才出现。
+4. **`is_doc_only` 要为 `false`**，否则只在打开书籍后才出现。
 
-4. **`_meta.lua` 的 `name` 要和主类的 `name` 一致**，且目录名必须是
-   `lightnovel.koplugin`（含 `.koplugin` 后缀）。
+5. **`_meta.lua` 的 `name` 要和主类的 `name` 一致**。
 
-5. **`sorting_hint` 决定菜单位置**：`"tools"` → 工具菜单，
+6. **`sorting_hint` 决定菜单位置**：`"tools"` → 工具菜单，
    `"search"` → 搜索菜单，`"setting"` → 设置菜单。
 
 不用上设备也能测这段逻辑：
