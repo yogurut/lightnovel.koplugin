@@ -101,7 +101,7 @@ if not Log then
 end
 
 if not INFO then
-    INFO = { fullname = "轻书架", version = "0.1.2", description = "", servers = {} }
+    INFO = { fullname = "轻书架", version = "0.1.3", description = "", servers = {} }
 end
 
 if not State then
@@ -175,8 +175,18 @@ local function do_login()
                     local email = dlg:getInputText(1)
                     local password = dlg:getInputText(2)
                     UIManager:close(dlg)
+
+                    -- 去除首尾空白：墨水屏软键盘很容易多出一个空格，
+                    -- 而服务端对邮箱是精确匹配，多一个空格就会报「没有此用户」
+                    email = (email or ""):gsub("^%s+", ""):gsub("%s+$", "")
+                    password = (password or ""):gsub("^%s+", ""):gsub("%s+$", "")
+
                     if email == "" or password == "" then
                         toast(_("邮箱和密码不能为空"))
+                        return
+                    end
+                    if not email:match("^[^@%s]+@[^@%s]+%.[^@%s]+$") then
+                        toast(_("邮箱格式不正确：") .. email, 6)
                         return
                     end
                     UIManager:nextTick(function()

@@ -59,6 +59,7 @@ echo "==> 菜单注册测试"
 if command -v lua5.1 >/dev/null 2>&1; then
     lua5.1 test/test_menu.lua || exit 1
     lua5.1 test/test_probe.lua || exit 1
+    lua5.1 test/test_login.lua || exit 1
 else
     echo "  ⚠️ 未安装 lua5.1，跳过"
 fi
@@ -88,6 +89,11 @@ SRC="$(find "$WORK" -maxdepth 2 -name "main.lua" -printf '%h\n' | head -1)"
 OUTDIR="$(mktemp -d)/lightnovel.koplugin"
 mkdir -p "$OUTDIR"
 cp -r "$SRC"/. "$OUTDIR"/
+
+# 剔除仅开发/测试用的文件，用户不需要
+rm -rf "$OUTDIR/test" "$OUTDIR/release.sh" "$OUTDIR/.gitignore"
+rm -f  "$OUTDIR/lightnovel/testjson.lua"
+
 ZIP="/tmp/lightnovel.koplugin-${TAG}.zip"
 rm -f "$ZIP"
 (cd "$(dirname "$OUTDIR")" && zip -qr "$ZIP" lightnovel.koplugin)

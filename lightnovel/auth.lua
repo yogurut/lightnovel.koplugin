@@ -221,6 +221,7 @@ function Auth.login(email, password)
     })
 
     Log.info("正在登录: %s", email)
+    Log.debug("登录请求体: %s", tostring(body))
     local res, err = Auth.request(server() .. "/api/user/login", {
         method = "POST",
         body = body,
@@ -228,6 +229,7 @@ function Auth.login(email, password)
     if not res then
         return nil, err
     end
+    Log.debug("登录响应 HTTP %s: %s", tostring(res.status), tostring(res.body):sub(1, 300))
 
     local ok, data = pcall(rapidjson.decode, res.body)
     if not ok or type(data) ~= "table" then
@@ -235,7 +237,25 @@ function Auth.login(email, password)
     end
 
     if not data.Success then
-        return nil, data.Msg or ("登录失败 (HTTP " .. tostring(res.status) .. ")")
+        -- 把请求详情与响应原文写进日志，便于排查
+        -- （例如「没有此用户」可能是邮箱拼错、密码摘要不对、或服务端
+        --   根本没解析到 body）
+        Log.warn("登录失败 HTTP %s，响应: %s", tostring(res.status),
+            tostring(res.body):sub(1, 500))
+        Log.warn("登录请求: url=%s email=%r sha256=%s body_len=%d",
+            server(), email, tostring(sha256_hex(password)), #body)
+
+        local msg = data.Msg or "登录失败"
+        local st = tonumber(res.status) or 0
+        -- 针对常见错误给出可操作提示
+        if msg:find("没有此用户") or st == 404 then
+            return nil, string.format(
+                "服务端找不到该账号（已发送：%s）。\n请确认邮箱拼写，注意不要多余空格；\n若确认无误，请先用浏览器在官网登录一次。",
+                email)
+        elseif msg:find("密码") then
+            return nil, "密码错误。请确认密码，注意大小写。"
+        end
+        return nil, string.format("%s (HTTP %d)", msg, st)
     end
 
     local resp = data.Response or {}
