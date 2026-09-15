@@ -1,5 +1,0 @@
-*.zip
-*.log
-.DS_Store
-node_modules/
-config.local.lua
