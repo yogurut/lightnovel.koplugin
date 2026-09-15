@@ -61,10 +61,31 @@ ok, inst = pcall(function() return plugin:new{ ui = fake_ui } end)
 check(ok, "实例化成功" .. (ok and "" or (": " .. tostring(inst))))
 if not ok then os.exit(1) end
 
+-- 说明：plugin:new 已经调过一次 init（由 stub 的 new 触发）
 ok = pcall(function() inst:init() end)
 check(ok, "init() 无异常" .. (ok and "" or (": " .. tostring(inst))))
 check(registered, "init() 中调用了 ui.menu:registerToMainMenu(self)")
-check(inst._wc_inited == true, "调用了 WidgetContainer.init(self)")
+
+-- 回归保护：绝不能调用 WidgetContainer.init(self)。
+-- 真实 KOReader 的 WidgetContainer 是空基类，没有 init 方法，
+-- 调用会报 “attempt to call field 'init' (a nil value)”，
+-- 真机上的表现就是 “Failed to initialize lightnovel plugin”。
+local WC = require("ui/widget/container/widgetcontainer")
+check(WC.init == nil, "WidgetContainer 桩无 init（与真实 KOReader 一致）")
+
+-- 只检查真实调用，跳过注释行
+local src = io.open(root .. "/main.lua"):read("*a")
+local offending = nil
+for line in src:gmatch("[^\n]+") do
+    local code = line:gsub("--.*$", "")   -- 去掉行内注释
+    if code:find("WidgetContainer%.init%s*%(") then
+        offending = line
+        break
+    end
+end
+check(offending == nil,
+    "main.lua 未调用 WidgetContainer.init（真机会崩）"
+    .. (offending and ("，实际: " .. offending) or ""))
 
 print("== 5. addToMainMenu ==")
 local menu_items = {}

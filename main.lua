@@ -432,13 +432,14 @@ function LightNovel:getMenuItems()
 end
 
 -- 插件初始化
--- 必须调用 WidgetContainer.init(self)，否则 widget 未正确构造。
+-- 注意：不要调用 WidgetContainer.init(self)！
+-- WidgetContainer 基类并没有 init 方法（它是空基类），调用会报
+-- “attempt to call field 'init' (a nil value)” 导致插件初始化失败。
+-- 直接写自己的初始化逻辑即可。
+--
 -- 另外，KOReader 只会为「文件管理器」自动注册菜单；
--- 在阅读器界面里需要自己调 ui.menu:registerToMainMenu(self)，
--- 否则会出现「插件列表里有名字、但菜单里找不到」。
+-- 在阅读器界面里需要自己调 ui.menu:registerToMainMenu(self)。
 function LightNovel:init()
-    WidgetContainer.init(self)
-
     if State and State.init then
         local ok, err = pcall(function()
             State:init()
