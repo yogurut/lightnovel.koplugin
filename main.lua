@@ -14,6 +14,7 @@
 ]]
 
 local _ = require("gettext")
+local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local UIManager = require("ui/uimanager")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
@@ -29,7 +30,14 @@ local Content = require("lightnovel.content")
 local Font = require("lightnovel.font")
 local INFO = require("lightnovel.info")
 
-local LightNovel = {}
+-- KOReader 的插件必须是 WidgetContainer 的子类，否则 pluginloader
+-- 不会把它接入菜单系统（会出现「插件列表里有名字，但菜单里找不到」）。
+local LightNovel = WidgetContainer:extend{
+    name = "lightnovel",
+    is_doc_only = false,
+    fullname = INFO.fullname,
+    version = INFO.version,
+}
 
 -- ============ 工具 ============
 
@@ -186,19 +194,23 @@ end
 
 -- ============ 设置 ============
 
-local function show_settings()
+-- 设置：作为菜单的二级子菜单（比自建 Menu 更可靠）
+local function settings_items()
     local items = {
         {
-            text = _("服务器"),
+            text = _("当前服务器"),
             help_text = State:get_server(),
+            keep_menu_open = true,
         },
     }
     for _, s in ipairs(INFO.servers) do
         items[#items + 1] = {
             text = "  " .. s.label .. (State:get_server() == s.value and "  ✓" or ""),
-            callback = function()
+            keep_menu_open = true,
+            callback = function(touchmenu_instance)
                 State:set_server(s.value)
                 toast(_("已切换到：") .. s.label)
+                if touchmenu_instance then touchmenu_instance:updateItems() end
             end,
         }
     end
@@ -206,7 +218,8 @@ local function show_settings()
     items[#items + 1] = {
         text = _("预下载章节数"),
         help_text = tostring(State:get_pre_download()),
-        callback = function()
+        keep_menu_open = true,
+        callback = function(touchmenu_instance)
             local dlg
             dlg = InputDialog:new{
                 title = _("预下载章节数"),
@@ -219,6 +232,7 @@ local function show_settings()
                             local n = tonumber(dlg:getInputText())
                             UIManager:close(dlg)
                             if n then State:set_pre_download(n) end
+                            if touchmenu_instance then touchmenu_instance:updateItems() end
                         end,
                     },
                 }},
@@ -231,10 +245,12 @@ local function show_settings()
     items[#items + 1] = {
         text = _("字体缓存目录"),
         help_text = Font.font_dir(),
+        keep_menu_open = true,
     }
 
     items[#items + 1] = {
         text = _("清理字体缓存（保留最近 3 个）"),
+        keep_menu_open = true,
         callback = function()
             Font.cleanup(3)
             toast(_("已清理"))
@@ -242,23 +258,12 @@ local function show_settings()
     }
 
     items[#items + 1] = {
-        text = _("查看日志文件"),
+        text = _("日志文件"),
         help_text = Log.get_path(),
+        keep_menu_open = true,
     }
 
-    local Menu = require("ui/widget/menu")
-    local m
-    m = Menu:new{
-        title = _("轻书架设置"),
-        item_table = items,
-        width = UIManager:getWidth(),
-        height = UIManager:getHeight(),
-        onMenuSelect = function(_, item)
-            if item.callback then item.callback() end
-            UIManager:close(m)
-        end,
-    }
-    UIManager:show(m)
+    return items
 end
 
 -- ============ 注册 ============
@@ -266,8 +271,17 @@ end
 function LightNovel:addToMainMenu(menu_items)
     menu_items.lightnovel = {
         text = _("轻书架"),
-        sorting_hint = "search",
-        sub_item_table = {
+        sorting_hint = "tools",
+        sub_item_table_func = function()
+            return self:getMenuItems()
+        end,
+    }
+end
+
+-- 菜单项用函数返回（KOReader 推荐），每次打开菜单重新求值，
+-- 这样「已登录：xxx」这类动态文案才会实时更新。
+function LightNovel:getMenuItems()
+    return {
             {
                 text_func = function()
                     if State:is_logged_in() then
@@ -327,7 +341,9 @@ function LightNovel:addToMainMenu(menu_items)
             },
             {
                 text = _("设置"),
-                callback = show_settings,
+                sub_item_table_func = function()
+                    return settings_items()
+                end,
             },
             {
                 text = _("关于"),
@@ -337,12 +353,33 @@ function LightNovel:addToMainMenu(menu_items)
                     })
                 end,
             },
-        },
     }
 end
 
+-- 插件初始化
+-- 必须调用 WidgetContainer.init(self)，否则 widget 未正确构造。
+-- 另外，KOReader 只会为「文件管理器」自动注册菜单；
+-- 在阅读器界面里需要自己调 ui.menu:registerToMainMenu(self)，
+-- 否则会出现「插件列表里有名字、但菜单里找不到」。
 function LightNovel:init()
-    State:init()
+    WidgetContainer.init(self)
+
+    local ok, err = pcall(function()
+        State:init()
+    end)
+    if not ok then
+        Log.error("State:init 失败: %s", tostring(err))
+    end
+
+    if self.ui and self.ui.menu then
+        local rok, rerr = pcall(function()
+            self.ui.menu:registerToMainMenu(self)
+        end)
+        if not rok then
+            Log.error("菜单注册失败: %s", tostring(rerr))
+        end
+    end
+
     Log.info("lightnovel 插件已加载 v%s", INFO.version)
 end
 

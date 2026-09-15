@@ -69,7 +69,7 @@
    ```
 
 2. 重启 KOReader。
-3. 菜单 → **搜索** → **轻书架**。
+3. 菜单 → **工具** → **轻书架**。
 
 ## 使用
 
@@ -87,8 +87,46 @@
 ### 第 0 步：确认能装能跑
 
 1. 把 `lightnovel.koplugin` 放进 `koreader/plugins/`，重启 KOReader。
-2. 打开菜单 → 搜索 → 应该能看到 **轻书架**。
+2. 打开菜单 → **工具** → 应该能看到 **轻书架**。
 3. 打开 `koreader/crash.log`，不应有 `lightnovel` 相关报错。
+
+#### 排查：插件列表里有「轻书架」，但菜单里找不到
+
+这是最容易踩的坑。原因和排查顺序：
+
+1. **插件必须是 `WidgetContainer` 的子类**。
+   如果 `main.lua` 里写的是 `local P = {}` 而不是
+   `local P = WidgetContainer:extend{...}`，KOReader 不会接管它的菜单，
+   但插件管理页仍会读出 `_meta.lua` 里的名字——于是出现「列表里有、菜单里没有」。
+
+2. **`init()` 里要手动注册菜单**。
+   KOReader 只会为文件管理器自动注册；在阅读器界面里需要：
+
+   ```lua
+   function P:init()
+       WidgetContainer.init(self)
+       if self.ui and self.ui.menu then
+           self.ui.menu:registerToMainMenu(self)
+       end
+   end
+   ```
+
+3. **`is_doc_only` 要为 `false`**，否则只在打开书籍后才出现。
+
+4. **`_meta.lua` 的 `name` 要和主类的 `name` 一致**，且目录名必须是
+   `lightnovel.koplugin`（含 `.koplugin` 后缀）。
+
+5. **`sorting_hint` 决定菜单位置**：`"tools"` → 工具菜单，
+   `"search"` → 搜索菜单，`"setting"` → 设置菜单。
+
+不用上设备也能测这段逻辑：
+
+```bash
+lua5.1 test/test_menu.lua
+```
+
+它会用 `test/menu-stubs/` 里的 KOReader 模块桩，完整模拟
+「加载 → 实例化 → init → 注册菜单 → 展开子菜单」的链路。
 
 ### 第 1 步：登录
 

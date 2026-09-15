@@ -51,8 +51,16 @@ while IFS= read -r f; do
         echo "  ❌ $f"
         FAIL=1
     fi
-done < <(find . -name "*.lua" -not -path "./.git/*")
+done < <(find . -name "*.lua" -not -path "./.git/*" -not -path "./test/menu-stubs/*")
 [ "$FAIL" -eq 0 ] && echo "  ✅ 全部通过" || exit 1
+
+# 菜单注册回归测试（防止「插件列表有名字、菜单里找不到」）
+echo "==> 菜单注册测试"
+if command -v lua5.1 >/dev/null 2>&1; then
+    lua5.1 test/test_menu.lua || exit 1
+else
+    echo "  ⚠️ 未安装 lua5.1，跳过"
+fi
 
 # ---- 打 tag ----
 echo "==> 创建 tag $TAG"
