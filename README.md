@@ -6,7 +6,7 @@
 > - 稳定版请到 [Releases](https://github.com/yogurut/lightnovel.koplugin/releases) 下载
 > - [`master`](https://github.com/yogurut/lightnovel.koplugin/tree/master) 仅作镜像/备份，标注为开发中
 
-在 [KOReader](https://github.com/koreader/koreader) 中阅读[轻书架](https://www.lightnovel.life)（lightnovel.app / lightnovel.life）的小说。
+在 [KOReader](https://github.com/koreader/koreader) 中阅读轻书架的小说。
 
 ![状态](https://img.shields.io/badge/status-开发中-orange)
 ![分支](https://img.shields.io/badge/branch-dev-blue)
@@ -255,8 +255,8 @@ lua5.1 test/test_menu.lua
 # 1. 拉一章，拿到 Font 路径（需要 Node.js + 登录）
 node test/getboth.js        # 见 test/ 目录
 
-# 2. 下载 ttf
-curl -o /tmp/ln.ttf "https://api.lightnovel.life/font/<hash>.ttf"
+# 2. 下载 ttf（完整基址见 lightnovel/info.lua）
+curl -o /tmp/ln.ttf "<API 基址>/font/<hash>.ttf"
 
 # 3. 用 Python 看字形
 python3 -c "
@@ -297,7 +297,7 @@ lightnovel.koplugin/
 
 ## 协议要点（供参考）
 
-- API 基址：`https://api.lightnovel.life`（备用 `https://cf-api.lightnovel.life`）
+- API 基址：见 `lightnovel/info.lua` 中的 `servers`（主线路 + CDN 备用线路）
 - 登录：`POST /api/user/login`，body `{email, password: sha256(password)}`，需 `x-id` 指纹头
 - 通信：SignalR Hub `/hub/api` + MessagePack
 - **所有 invoke 必须带 `{UseGzip: false}` 作为最后一个参数**，否则服务端报
