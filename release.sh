@@ -58,6 +58,7 @@ done < <(find . -name "*.lua" -not -path "./.git/*" -not -path "./test/menu-stub
 echo "==> 菜单注册测试"
 if command -v lua5.1 >/dev/null 2>&1; then
     lua5.1 test/test_menu.lua || exit 1
+    lua5.1 test/test_probe.lua || exit 1
 else
     echo "  ⚠️ 未安装 lua5.1，跳过"
 fi

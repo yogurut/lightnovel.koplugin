@@ -56,6 +56,18 @@ local api     = safe_require("lightnovel.api")
 local Content = safe_require("lightnovel.content")
 local Font    = safe_require("lightnovel.font")
 local INFO    = safe_require("lightnovel.info")
+local Probe   = safe_require("lightnovel.probe")
+
+-- Probe 加载失败时用空实现兑底，保证菜单和登录仍可用
+if not Probe then
+    Probe = {
+        pick_server = function() return nil, false, {} end,
+        available = function() return nil, {} end,
+        run = function() return {} end,
+        clear = function() end,
+        format_results = function() return "（探测模块未加载）" end,
+    }
+end
 
 -- 写一个自检标记，用来判断「KOReader 到底有没有加载这个插件」。
 -- 如果 koreader/settings/lightnovel/loaded.txt 不存在，
@@ -89,7 +101,7 @@ if not Log then
 end
 
 if not INFO then
-    INFO = { fullname = "轻书架", version = "0.1.1", description = "", servers = {} }
+    INFO = { fullname = "轻书架", version = "0.1.2", description = "", servers = {} }
 end
 
 if not State then
@@ -110,6 +122,35 @@ local LightNovel = WidgetContainer:extend{
 
 local function toast(text, timeout)
     UIManager:show(InfoMessage:new{ text = text, timeout = timeout or 3 })
+end
+
+--[[
+加载中提示。
+
+因为 KOReader 是单线程 + 阻塞式 socket，登录期间界面不会自动刷新，
+所以必须用 norefresh=true 手动控制，并在请求前 forceRePaint()，
+否则用户会看到界面卡住、以为死机了。
+
+用法：
+    local busy = show_busy(_("登录中，请稍候…"))
+    ... 阻塞请求 ...
+    close_busy(busy)
+]]
+local function show_busy(text)
+    local msg = InfoMessage:new{
+        text = text,
+        norefresh = true,
+    }
+    UIManager:show(msg)
+    UIManager:forceRePaint()
+    return msg
+end
+
+local function close_busy(msg)
+    if msg then
+        UIManager:close(msg)
+        UIManager:forceRePaint()
+    end
 end
 
 -- ============ 登录 ============
@@ -140,7 +181,20 @@ local function do_login()
                     end
                     UIManager:nextTick(function()
                         Trapper:wrap(function()
+                            -- 1) 先探测线路，挑一个能用的
+                            local busy = show_busy(_("正在检测服务器…"))
+                            local url, switched = Probe.pick_server()
+                            close_busy(busy)
+
+                            if switched then
+                                toast(_("已自动切换到可用线路"))
+                            end
+
+                            -- 2) 登录
+                            busy = show_busy(_("登录中，请稍候…"))
                             local token, err = Auth.login(email, password)
+                            close_busy(busy)
+
                             if token then
                                 toast(_("登录成功"))
                             else
@@ -161,7 +215,9 @@ end
 -- 打开某书某章
 local function open_chapter(book_id, sort_num)
     Trapper:wrap(function()
+        local busy = show_busy(_("正在获取章节…"))
         local path, chapter, warn = Content.prepare(book_id, sort_num)
+        close_busy(busy)
         if not path then
             toast(_("打开失败：") .. tostring(chapter), 6)
             return
@@ -219,7 +275,9 @@ end
 local function test_font(book_id)
     book_id = book_id or State:get_last_book() or 20287
     Trapper:wrap(function()
+        local busy = show_busy(_("正在拉取章节…"))
         local chapter, err = Content.fetch(book_id, 1)
+        close_busy(busy)
         if not chapter then
             toast(_("拉取章节失败：") .. tostring(err), 8)
             return
@@ -236,7 +294,9 @@ local function test_font(book_id)
             local hash = Font.hash_from_path(chapter.font_path)
             lines[#lines + 1] = "字体 hash: " .. tostring(hash)
 
+            busy = show_busy(_("正在下载字体…"))
             local path, ferr = Font.ensure(api, chapter.font_path, api.base_url())
+            close_busy(busy)
             if ferr then
                 lines[#lines + 1] = "❌ 字体下载失败: " .. tostring(ferr)
             else
@@ -273,14 +333,31 @@ local function settings_items()
     for _, s in ipairs(INFO.servers) do
         items[#items + 1] = {
             text = "  " .. s.label .. (State:get_server() == s.value and "  ✓" or ""),
+            help_text = s.value,
             keep_menu_open = true,
             callback = function(touchmenu_instance)
                 State:set_server(s.value)
+                Probe.clear()
                 toast(_("已切换到：") .. s.label)
                 if touchmenu_instance then touchmenu_instance:updateItems() end
             end,
         }
     end
+
+    items[#items + 1] = {
+        text = _("自动选择可用线路"),
+        keep_menu_open = true,
+        callback = function(touchmenu_instance)
+            local busy = show_busy(_("正在检测服务器…"))
+            local url, switched, results = Probe.pick_server()
+            close_busy(busy)
+            UIManager:show(InfoMessage:new{
+                text = _("线路检测结果") .. "\n\n" .. Probe.format_results(results)
+                    .. "\n\n" .. _("当前使用：") .. tostring(State:get_server()),
+            })
+            if touchmenu_instance then touchmenu_instance:updateItems() end
+        end,
+    }
 
     items[#items + 1] = {
         text = _("预下载章节数"),

@@ -33,6 +33,12 @@ end
 -- 取章节内容（含密文与字体路径）
 -- 返回 { title, content(html), font_path, sort_num, book_id }
 function Content.fetch(book_id, sort_num)
+    -- 先确认线路可用（有缓存时几乎无开销）
+    local ok_probe, Probe = pcall(require, "lightnovel.probe")
+    if ok_probe and Probe and Probe.pick_server then
+        Probe.pick_server()
+    end
+
     local res, err = api.hub_call("GetNovelContent", { Bid = book_id, SortNum = sort_num })
     if not res then
         return nil, err
