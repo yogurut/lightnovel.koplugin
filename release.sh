@@ -102,15 +102,58 @@ echo "  $ZIP ($(stat -c%s "$ZIP") bytes)"
 # ---- 创建 Release ----
 echo "==> 创建 GitHub Release"
 python3 - "$TOKEN" "$TAG" "$CHANNEL" "$ZIP" "$VER" <<'PY'
-import json, sys, urllib.request
+import json, re, sys, urllib.request
+
 token, tag, channel, zip_path, ver = sys.argv[1:6]
+
 notes = f"""## {tag}
 
 ### 安装
-下载 `lightnovel.koplugin-{tag}.zip`，解压到 `koreader/plugins/`，重启 KOReader。
 
-详见仓库 README 的「测试指南」。
+1. 下载 `lightnovel.koplugin-{tag}.zip`
+2. 解压，把 `lightnovel.koplugin` 整个目录放进 `koreader/plugins/`
+3. **完全退出并重启 KOReader**
+
+目录结构（不要多套一层）：
+
+```
+koreader/plugins/lightnovel.koplugin/
+├── _meta.lua
+├── main.lua
+└── lightnovel/
+```
+
+**入口：菜单 → 工具 → 轻书架**
+
+### 功能
+
+- 邮箱登录（登录前自动检测可用线路，并显示「登录中」提示）
+- 章节正文字体解密还原
+- 字体下载 / 缓存 / 注册 / CSS 注入
+- 墨水屏适配
+
+### 上设备后的验证路径
+
+1. **工具 → 轻书架 → 登录**
+2. **默认测试书籍 ID** 填 `20287`
+3. **测试字体解密**，确认字体加载成功
+4. **打开书籍** `20287`，确认正文为正常汉字
+
+### 说明
+
+- 本版本为{'正式版' if channel == 'stable' else '开发版'}
+- 使用细节与原理说明见仓库 README
 """
+
+# 安全检查：发布说明中不得出现任何网址
+urls = re.findall(r"https?://[^\s`)\]\",]+", notes)
+if urls:
+    print("❌ 发布说明中检出了网址，已中止：")
+    for u in sorted(set(urls)):
+        print("    " + u)
+    sys.exit(1)
+print("  安全检查：发布说明中无网址 ✅")
+
 body = json.dumps({
     "tag_name": tag,
     "name": f"{tag}" + (" 开发版" if channel != "stable" else ""),
